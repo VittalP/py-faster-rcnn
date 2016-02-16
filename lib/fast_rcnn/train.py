@@ -98,6 +98,20 @@ class SolverWrapper(object):
         last_snapshot_iter = -1
         timer = Timer()
         model_paths = []
+       
+	# Check if the max_iter model exists 
+        infix = ('_' + cfg.TRAIN.SNAPSHOT_INFIX
+                 if cfg.TRAIN.SNAPSHOT_INFIX != '' else '')
+	filename = (self.solver_param.snapshot_prefix + infix +
+                    '_iter_{:d}'.format(max_iters) + '.caffemodel')
+        filename = os.path.join(self.output_dir, filename)
+	
+	# If exists append its path and return
+	if os.path.isfile(filename):
+            print "Max iter model exists."
+	    model_paths.append(filename)
+	    return model_paths
+
         while self.solver.iter < max_iters:
             # Make one SGD update
             timer.tic()
