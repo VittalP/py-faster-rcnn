@@ -158,16 +158,23 @@ def rpn_generate(queue=None, imdb_name=None, rpn_model_path=None, cfg=None,
     rpn_net = caffe.Net(rpn_test_prototxt, rpn_model_path, caffe.TEST)
     output_dir = get_output_dir(imdb, None)
     print 'Output will be saved to `{:s}`'.format(output_dir)
-    # Generate proposals on the imdb
-    rpn_proposals = imdb_proposals(rpn_net, imdb)
-    # Write proposals to disk and send the proposal file path through the
-    # multiprocessing queue
+    
     rpn_net_name = os.path.splitext(os.path.basename(rpn_model_path))[0]
     rpn_proposals_path = os.path.join(
         output_dir, rpn_net_name + '_proposals.pkl')
-    with open(rpn_proposals_path, 'wb') as f:
-        cPickle.dump(rpn_proposals, f, cPickle.HIGHEST_PROTOCOL)
-    print 'Wrote RPN proposals to {}'.format(rpn_proposals_path)
+    
+    if not os.path.isfile(rpn_proposals_path):
+        # Generate proposals on the imdb
+        rpn_proposals = imdb_proposals(rpn_net, imdb)
+        
+        # Write proposals to disk
+        with open(rpn_proposals_path, 'wb') as f:
+            cPickle.dump(rpn_proposals, f, cPickle.HIGHEST_PROTOCOL)
+        print 'Wrote RPN proposals to {}'.format(rpn_proposals_path)
+    else:
+	print "Proposals exist already."
+    # Send the proposal file path through the
+    # multiprocessing queue
     queue.put({'proposal_path': rpn_proposals_path})
 
 def train_fast_rcnn(queue=None, imdb_name=None, init_model=None, solver=None,
