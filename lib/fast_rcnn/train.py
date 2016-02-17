@@ -102,7 +102,7 @@ class SolverWrapper(object):
 	# Check if the max_iter model exists 
         infix = ('_' + cfg.TRAIN.SNAPSHOT_INFIX
                  if cfg.TRAIN.SNAPSHOT_INFIX != '' else '')
-	filename = (self.solver_param.snapshot_prefix + infix +
+        filename = (self.solver_param.snapshot_prefix + infix +
                     '_iter_{:d}'.format(max_iters) + '.caffemodel')
         filename = os.path.join(self.output_dir, filename)
 	
