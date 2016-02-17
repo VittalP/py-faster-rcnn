@@ -162,7 +162,9 @@ def rpn_generate(queue=None, imdb_name=None, rpn_model_path=None, cfg=None,
     rpn_net_name = os.path.splitext(os.path.basename(rpn_model_path))[0]
     rpn_proposals_path = os.path.join(
         output_dir, rpn_net_name + '_proposals.pkl')
-    
+   
+    # Check if rpn proposals have already been computed
+    # If so, don't recompute 
     if not os.path.isfile(rpn_proposals_path):
         # Generate proposals on the imdb
         rpn_proposals = imdb_proposals(rpn_net, imdb)
