@@ -251,7 +251,7 @@ def test_net(net, imdb):
 
     if not cfg.TEST.HAS_RPN:
         roidb = imdb.roidb
-    print output_dir 
+    
     # If all_boxes exist load, else compute
     det_file = os.path.join(output_dir, 'detections.pkl')
     if os.path.isfile(det_file):
