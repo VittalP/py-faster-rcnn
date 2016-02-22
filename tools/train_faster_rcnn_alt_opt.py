@@ -18,6 +18,7 @@ from fast_rcnn.train import get_training_roidb, train_net
 from fast_rcnn.config import cfg, cfg_from_file, cfg_from_list, get_output_dir
 from datasets.factory import get_imdb
 from rpn.generate import imdb_proposals
+import datasets.imdb
 import argparse
 import pprint
 import numpy as np
@@ -57,14 +58,33 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def get_roidb(imdb_name, rpn_file=None):
-    imdb = get_imdb(imdb_name)
-    print 'Loaded dataset `{:s}` for training'.format(imdb.name)
-    imdb.set_proposal_method(cfg.TRAIN.PROPOSAL_METHOD)
-    print 'Set proposal method: {:s}'.format(cfg.TRAIN.PROPOSAL_METHOD)
-    if rpn_file is not None:
-        imdb.config['rpn_file'] = rpn_file
-    roidb = get_training_roidb(imdb)
+def combined_roidb(imdb_names, rpn_files=None):
+    def get_roidb(imdb_name, rpn_file=None):
+        imdb = get_imdb(imdb_name)
+        print 'Loaded dataset `{:s}` for training'.format(imdb.name)
+        imdb.set_proposal_method(cfg.TRAIN.PROPOSAL_METHOD)
+        print 'Set proposal method: {:s}'.format(cfg.TRAIN.PROPOSAL_METHOD)
+        if rpn_file is not None:
+            imdb.config['rpn_file'] = rpn_file
+        roidb = get_training_roidb(imdb)
+        return roidb
+
+    if '+' in imdb_names:  # Multiple databases e.g. voc_2007_trainval+voc_2012_trainval
+        imdbs_list = imdb_names.split('+')
+        imdb = datasets.imdb.imdb(imdb_names)
+        if rpn_files is None:
+            rpn_files = [None] * len(imdbs_list)
+
+        assert(len(imdbs_list) == len(rpn_files))
+        for i, imdb_name in enumerate(imdbs_list):
+            if i == 0:
+                roidb = get_roidb(imdb_name, rpn_files[i])
+            else:
+                roidb.extend( get_roidb(imdb_name, rpn_files[i]) )
+    else:   # Single database case e.g. voc_2007_trainval
+        roidb = get_roidb(imdb_names, rpn_files)
+        imdb= get_imdb(imdb_names)
+
     return roidb, imdb
 
 def get_solvers(net_name):
@@ -119,7 +139,7 @@ def train_rpn(queue=None, imdb_name=None, init_model=None, solver=None,
     import caffe
     _init_caffe(cfg)
 
-    roidb, imdb = get_roidb(imdb_name)
+    roidb, imdb = combined_roidb(imdb_name)
     print 'roidb len: {}'.format(len(roidb))
     output_dir = get_output_dir(imdb, None)
     print 'Output will be saved to `{:s}`'.format(output_dir)
@@ -148,33 +168,45 @@ def rpn_generate(queue=None, imdb_name=None, rpn_model_path=None, cfg=None,
     import caffe
     _init_caffe(cfg)
 
-    # NOTE: the matlab implementation computes proposals on flipped images, too.
-    # We compute them on the image once and then flip the already computed
-    # proposals. This might cause a minor loss in mAP (less proposal jittering).
-    imdb = get_imdb(imdb_name)
-    print 'Loaded dataset `{:s}` for proposal generation'.format(imdb.name)
-
-    # Load RPN and configure output directory
-    rpn_net = caffe.Net(rpn_test_prototxt, rpn_model_path, caffe.TEST)
-    output_dir = get_output_dir(imdb, None)
-    print 'Output will be saved to `{:s}`'.format(output_dir)
-    
-    rpn_net_name = os.path.splitext(os.path.basename(rpn_model_path))[0]
-    rpn_proposals_path = os.path.join(
-        output_dir, rpn_net_name + '_proposals.pkl')
-   
-    # Check if rpn proposals have already been computed
-    # If so, don't recompute 
-    if not os.path.isfile(rpn_proposals_path):
-        # Generate proposals on the imdb
-        rpn_proposals = imdb_proposals(rpn_net, imdb)
-        
-        # Write proposals to disk
-        with open(rpn_proposals_path, 'wb') as f:
-            cPickle.dump(rpn_proposals, f, cPickle.HIGHEST_PROTOCOL)
-        print 'Wrote RPN proposals to {}'.format(rpn_proposals_path)
+    if '+' in imdb_name:
+        imdbs_list = imdb_name.split('+')
+        imdb = datasets.imdb.imdb(imdb_name)
+        output_dir = get_output_dir(imdb, None)
+        print 'Output will be saved to `{:s}`'.format(output_dir)
     else:
-	print "Proposals exist already."
+        imdbs_list = [imdb_name]
+        output_dir = None   # Gets set later for single database case
+    rpn_proposals_path = [None] * len(imdbs_list)
+    for i, imdb_name in enumerate(imdbs_list): 
+        # NOTE: the matlab implementation computes proposals on flipped images, too.
+        # We compute them on the image once and then flip the already computed
+        # proposals. This might cause a minor loss in mAP (less proposal jittering).
+        imdb = get_imdb(imdb_name)
+        print 'Loaded dataset `{:s}` for proposal generation'.format(imdb.name)
+        if output_dir is None:
+            output_dir = get_output_dir(imdb, None)
+            print 'Output will be saved to `{:s}`'.format(output_dir)
+        # Load RPN and configure output directory
+        rpn_net = caffe.Net(rpn_test_prototxt, rpn_model_path, caffe.TEST)
+        
+        rpn_net_name = os.path.splitext(os.path.basename(rpn_model_path))[0]
+        rpn_proposals_path[i] = os.path.join(
+            output_dir, rpn_net_name + '_' + imdb_name + '_proposals.pkl')
+
+        # Check if rpn proposals have already been computed
+        # If so, don't recompute 
+        if not os.path.isfile(rpn_proposals_path[i]):
+            # Generate proposals on the imdb
+            rpn_proposals = imdb_proposals(rpn_net, imdb)
+            
+            # Write proposals to disk
+            with open(rpn_proposals_path[i], 'wb') as f:
+                cPickle.dump(rpn_proposals, f, cPickle.HIGHEST_PROTOCOL)
+            print 'Wrote RPN proposals to {}'.format(rpn_proposals_path[i])
+        else:
+            print "Proposals for " + imdb_name + " exist already."
+    if len(rpn_proposals_path) == 1:
+        rpn_proposals_path = rpn_proposals_path[0]
     # Send the proposal file path through the
     # multiprocessing queue
     queue.put({'proposal_path': rpn_proposals_path})
@@ -195,7 +227,7 @@ def train_fast_rcnn(queue=None, imdb_name=None, init_model=None, solver=None,
     import caffe
     _init_caffe(cfg)
 
-    roidb, imdb = get_roidb(imdb_name, rpn_file=rpn_file)
+    roidb, imdb = combined_roidb(imdb_name, rpn_files=rpn_file)
     output_dir = get_output_dir(imdb, None)
     print 'Output will be saved to `{:s}`'.format(output_dir)
     # Train Fast R-CNN
@@ -249,7 +281,7 @@ if __name__ == '__main__':
     p.start()
     rpn_stage1_out = mp_queue.get()
     p.join()
-
+    
     print '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
     print 'Stage 1 RPN, generate proposals'
     print '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~'
