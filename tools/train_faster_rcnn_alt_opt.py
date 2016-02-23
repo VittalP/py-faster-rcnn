@@ -141,7 +141,7 @@ def train_rpn(queue=None, imdb_name=None, init_model=None, solver=None,
 
     roidb, imdb = combined_roidb(imdb_name)
     print 'roidb len: {}'.format(len(roidb))
-    output_dir = get_output_dir(imdb, None)
+    output_dir = get_output_dir(imdb)
     print 'Output will be saved to `{:s}`'.format(output_dir)
 
     model_paths = train_net(solver, roidb, output_dir,
